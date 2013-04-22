@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/tknetworks-cookbooks/chef-openbsd.png?branch=master)](https://travis-ci.org/tknetworks-cookbooks/chef-openbsd)
+
 OpenBSD Chef Resources
 ======================
 
