@@ -84,6 +84,14 @@ on the `parameters` hash.
       action [:enable, :start]
     end
 
+minitest-handler-cookbook intergration
+--------------------------------------
+
+You can run minitest via minitest-handler-cookbook with Vagrant. eg:
+
+    $ vagrant up
+    $ vagrant provision
+
 Author
 ------
 
