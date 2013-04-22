@@ -70,7 +70,7 @@ class Chef
         end
 
         def remove_package(name, version)
-          pkg_spec = version == '' ? name : "#{name}-#{version}"
+          pkg_spec = version == '' || version.nil? ? name : "#{name}-#{version}"
           shell_out!("pkg_delete #{pkg_spec}").status
         end
 
