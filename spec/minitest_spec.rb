@@ -43,4 +43,8 @@ describe 'chef-openbsd::minitest' do
     expect(chef_run).to disable_service 'sndiod'
     expect(chef_run).to stop_service 'sndiod'
   end
+
+  it 'enable ipsec special service' do
+    expect(chef_run).to enable_service 'ipsec'
+  end
 end

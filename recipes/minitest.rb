@@ -44,3 +44,7 @@ end
 service "sndiod" do
   action [:disable, :stop]
 end
+
+service "ipsec" do
+  action :enable
+end

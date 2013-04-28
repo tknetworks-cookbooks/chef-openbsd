@@ -47,4 +47,8 @@ describe_recipe 'chef-openbsd::minitest' do
   it "stops sndiod service" do
     service("sndiod").wont_be_running
   end
+
+  it "enables ipsec special service" do
+    service("ipsec").must_be_enabled
+  end
 end

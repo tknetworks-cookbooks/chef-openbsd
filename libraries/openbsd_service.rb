@@ -36,17 +36,24 @@ class Chef
           @current_resource.service_name(@new_resource.service_name)
           @rcd_script_found = true
           @enabled_state_found = false
-          # Determine if we're talking about /etc/rc.d or /usr/local/etc/rc.d
+          # Determine if we're talking about /etc/rc.d or /usr/local/etc/rc.d or special service (eg. ipsec)
           if ::File.exists?("/etc/rc.d/#{current_resource.service_name}")
             @init_command = "/etc/rc.d/#{current_resource.service_name}"
           elsif ::File.exists?("/usr/local/etc/rc.d/#{current_resource.service_name}")
             @init_command = "/usr/local/etc/rc.d/#{current_resource.service_name}"
           else
             @rcd_script_found = false
-            return
+            return unless is_special_service?
           end
-          Chef::Log.debug("#{@current_resource} found at #{@init_command}")
-          determine_current_status!
+
+          if is_special_service?
+            @enabled_state_found = true
+            Chef::Log.debug("#{@current_resource} is special service.")
+          else
+            determine_current_status!
+            Chef::Log.debug("#{@current_resource} found at #{@init_command}")
+          end
+
           # Default to disabled if the service doesn't currently exist
           # at all
           var_name = service_enable_variable_name
@@ -73,8 +80,15 @@ class Chef
 
         def define_resource_requirements
           shared_resource_requirements
-          requirements.assert(:start, :enable, :reload, :restart) do |a|
+
+          # In special service, only :enable supported
+          requirements.assert(:start, :reload, :restart) do |a|
             a.assertion { @rcd_script_found }
+            a.failure_message Chef::Exceptions::Service, "#{@new_resource}: unable to locate the rc.d script"
+          end
+
+          requirements.assert(:enable) do |a|
+            a.assertion { @rcd_script_found ? @rcd_script_found : is_special_service? }
             a.failure_message Chef::Exceptions::Service, "#{@new_resource}: unable to locate the rc.d script"
           end
 
@@ -85,8 +99,14 @@ class Chef
             a.whyrun "Unable to determine enabled/disabled state, assuming this will be correct for an actual run.  Assuming disabled." 
           end
 
-          requirements.assert(:start, :enable, :reload, :restart) do |a|
+          requirements.assert(:start, :reload, :restart) do |a|
             a.assertion { @rcd_script_found && service_enable_variable_name != nil }
+            a.failure_message Chef::Exceptions::Service, "Could not find the service name in #{@init_command} and rcvar"
+            # No recovery in whyrun mode - the init file is present but not correct.
+          end
+
+          requirements.assert(:enable) do |a|
+            a.assertion { (@rcd_script_found ? @rcd_script_found : is_special_service?) && service_enable_variable_name != nil }
             a.failure_message Chef::Exceptions::Service, "Could not find the service name in #{@init_command} and rcvar"
             # No recovery in whyrun mode - the init file is present but not correct.
           end
@@ -142,7 +162,12 @@ class Chef
 
         # The variable name used in /etc/rc.conf.local for enabling this service
         def service_enable_variable_name
-          "#{@new_resource.service_name}_flags"
+          # we need no `_flags' suffix such as 'ipsec=YES`
+          if is_special_service?
+            @new_resource.service_name
+          else
+            "#{@new_resource.service_name}_flags"
+          end
         end
 
         def set_service_enable(value)
@@ -166,10 +191,17 @@ class Chef
               set_service_enable("")
             end
           end
+          if is_special_service?
+            set_service_enable("YES")
+          end
         end
 
         def disable_service()
           set_service_enable("NO") if @current_resource.enabled
+        end
+
+        def is_special_service?
+          %w{ipsec pf bt}.any? { |s| @new_resource.service_name == s }
         end
 
       end
