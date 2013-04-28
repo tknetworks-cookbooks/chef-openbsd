@@ -1,0 +1,7 @@
+name             "chef-openbsd"
+maintainer       "tknetworks-cookbooks"
+maintainer_email "nabeken@tknetworks.org"
+license          "Apache 2.0"
+description      "Installs/Configures ssh"
+version          "0.0.1"
+supports         "openbsd"
