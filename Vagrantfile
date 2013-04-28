@@ -7,7 +7,7 @@ Vagrant.configure("2") do |config|
   config.vm.guest = :openbsd_v2
   config.vm.hostname = "vagrant-openbsd"
   config.vm.box_url = "http://projects.tsuntsun.net/~nabeken/boxes/vagrant-openbsd-52.box"
-  config.vm.network :private_network, ip: "192.168.67.10", netmask: "255.255.255.0"
+  config.vm.network :private_network, ip: "192.168.67.20", netmask: "255.255.255.0"
 
   config.vm.provision :chef_solo do |chef|
     chef.nfs = true
