@@ -32,19 +32,18 @@ describe_recipe 'chef-openbsd::minitest' do
     package("foobar").wont_be_installed
   end
 
-  it "enables ntpd service" do
+  it "enables/starts ntpd service" do
     service("ntpd").must_be_enabled
-  end
-
-  it "starts ntpd service" do
     service("ntpd").must_be_running
   end
 
-  it "disables sndiod service" do
-    service("sndiod").wont_be_enabled
+  it "enables/starts isakmpd service with flags" do
+    service("isakmpd").must_be_enabled
+    service("isakmpd").must_be_running
   end
 
-  it "stops sndiod service" do
+  it "stops/disables sndiod service" do
+    service("sndiod").wont_be_enabled
     service("sndiod").wont_be_running
   end
 

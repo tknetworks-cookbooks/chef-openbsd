@@ -39,6 +39,11 @@ describe 'chef-openbsd::minitest' do
     expect(chef_run).to start_service 'ntpd'
   end
 
+  it 'enable/start isakmpd service with flags' do
+    expect(chef_run).to enable_service 'isakmpd'
+    expect(chef_run).to start_service 'isakmpd'
+  end
+
   it 'stop/disable sndiod service' do
     expect(chef_run).to disable_service 'sndiod'
     expect(chef_run).to stop_service 'sndiod'

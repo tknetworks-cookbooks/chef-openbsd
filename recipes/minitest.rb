@@ -45,6 +45,11 @@ service "sndiod" do
   action [:disable, :stop]
 end
 
+service "isakmpd" do
+  action [:enable, :start]
+  parameters(:flags => '-K -v')
+end
+
 service "ipsec" do
   action :enable
 end
