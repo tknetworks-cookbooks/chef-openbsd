@@ -55,6 +55,7 @@ describe 'chef-openbsd::minitest' do
 
   it 'should enable bird' do
     expect(chef_run).to enable_service 'bird'
+    expect(chef_run.service('bird').parameters).to eq({:pkg_script => true})
   end
 
 end
