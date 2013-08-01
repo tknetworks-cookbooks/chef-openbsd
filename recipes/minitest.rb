@@ -27,6 +27,10 @@ package "zsh" do
   version '4.3.17'
 end
 
+package "bird" do
+  action :install
+end
+
 execute "install-wget" do
   action :nothing
   command "pkg_add wget"
@@ -52,4 +56,14 @@ end
 
 service "ipsec" do
   action :enable
+end
+
+service "bird" do
+  action :enable
+  parameters(:pkg_script => true)
+end
+
+service "bird-v6" do
+  action :disable
+  parameters(:pkg_script => true)
 end

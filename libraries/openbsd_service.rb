@@ -28,14 +28,18 @@ class Chef
   class Provider
     class Service
       class Openbsd < Chef::Provider::Service::Init
+        RC_CONF_LOCAL = '/etc/rc.conf.local'
+        PKG_SCRIPTS_CONF = '/etc/pkg_scripts.conf'
 
         include Chef::Mixin::ShellOut
 
         def load_current_resource
           @current_resource = Chef::Resource::Service.new(@new_resource.name)
           @current_resource.service_name(@new_resource.service_name)
+
           @rcd_script_found = true
           @enabled_state_found = false
+
           # Determine if we're talking about /etc/rc.d or /usr/local/etc/rc.d or special service (eg. ipsec)
           if ::File.exists?("/etc/rc.d/#{current_resource.service_name}")
             @init_command = "/etc/rc.d/#{current_resource.service_name}"
@@ -54,26 +58,18 @@ class Chef
             Chef::Log.debug("#{@current_resource} found at #{@init_command}")
           end
 
-          # Default to disabled if the service doesn't currently exist
-          # at all
-          var_name = service_enable_variable_name
-          if ::File.exists?("/etc/rc.conf.local") && var_name
-            read_rc_conf.each do |line|
-              case line
-              when /#{Regexp.escape(var_name)}="(.*)"/
-                @enabled_state_found = true
-                if $1 =~ /[Nn][Oo][Nn]?[Oo]?[Nn]?[Ee]?/
-                  @current_resource.enabled false
-                else
-                  @current_resource.enabled true
-                end
-              end
-            end
+          begin
+            determine_current_enabled_status!
+          rescue
+            @enabled_state_found = false
           end
-          unless @current_resource.enabled
+
+          unless @enabled_state_found
             Chef::Log.debug("#{@new_resource.name} enable/disable state unknown")
             @current_resource.enabled false
           end
+
+          install_pkg_scripts_hook
 
           @current_resource
         end
@@ -88,7 +84,7 @@ class Chef
           end
 
           requirements.assert(:enable) do |a|
-            a.assertion { @rcd_script_found ? @rcd_script_found : is_special_service? }
+            a.assertion { @rcd_script_found || is_special_service? }
             a.failure_message Chef::Exceptions::Service, "#{@new_resource}: unable to locate the rc.d script"
           end
 
@@ -106,7 +102,7 @@ class Chef
           end
 
           requirements.assert(:enable) do |a|
-            a.assertion { (@rcd_script_found ? @rcd_script_found : is_special_service?) && service_enable_variable_name != nil }
+            a.assertion { (@rcd_script_found || is_special_service?) && service_enable_variable_name != nil }
             a.failure_message Chef::Exceptions::Service, "Could not find the service name in #{@init_command} and rcvar"
             # No recovery in whyrun mode - the init file is present but not correct.
           end
@@ -139,7 +135,6 @@ class Chef
 
         def restart_service
           if @new_resource.restart_command
-
             super
           elsif @new_resource.supports[:restart]
             shell_out!("#{@init_command} restart")
@@ -150,14 +145,34 @@ class Chef
           end
         end
 
+        def read_conf(path)
+          ::File.open(path, 'r') { |file|
+            file.readlines
+          }.map { |l|
+            l.chomp
+          }
+        end
+
+        def write_conf(path, lines)
+          ::File.open(path, 'w') do |file|
+            lines.each { |line| file.puts(line) }
+          end
+        end
+
         def read_rc_conf
-          ::File.open("/etc/rc.conf.local", 'r') { |file| file.readlines }
+          read_conf(RC_CONF_LOCAL)
+        end
+
+        def read_pkg_scripts_conf
+          read_conf(PKG_SCRIPTS_CONF)
         end
 
         def write_rc_conf(lines)
-          ::File.open("/etc/rc.conf.local", 'w') do |file|
-            lines.each { |line| file.puts(line) }
-          end
+          write_conf(RC_CONF_LOCAL, lines)
+        end
+
+        def write_pkg_scripts_conf(lines)
+          write_conf(PKG_SCRIPTS_CONF, lines)
         end
 
         # The variable name used in /etc/rc.conf.local for enabling this service
@@ -183,10 +198,39 @@ class Chef
           write_rc_conf(lines)
         end
 
+        def add_to_pkg_scripts_conf
+          lines = begin
+                    read_pkg_scripts_conf
+                  rescue Errno::ENOENT
+                    []
+                  end
+          # And append the line if no service name found
+          unless lines.any? { |line| line == @current_resource.service_name }
+            lines << @current_resource.service_name
+            write_pkg_scripts_conf(lines)
+          end
+        end
+
+        def remove_from_pkg_scripts_conf
+          lines = begin
+                    read_pkg_scripts_conf
+                  rescue Errno::ENOENT
+                    []
+                  end
+          # And append the line if no service name found
+          lines.delete_if { |line| line == @current_resource.service_name }
+          write_rc_conf(lines)
+        end
+
         def enable_service()
           unless @current_resource.enabled
-            if @new_resource.parameters and @new_resource.parameters.include?(:flags)
-              set_service_enable(@new_resource.parameters[:flags])
+            if @new_resource.parameters
+              if @new_resource.parameters.include?(:flags)
+                set_service_enable(@new_resource.parameters[:flags])
+              end
+              if @new_resource.parameters[:pkg_script]
+                add_to_pkg_scripts_conf
+              end
             else
               set_service_enable("")
             end
@@ -197,13 +241,49 @@ class Chef
         end
 
         def disable_service()
-          set_service_enable("NO") if @current_resource.enabled
+          if @current_resource.enabled
+            set_service_enable("NO")
+            remove_from_pkg_scripts_conf
+          end
         end
 
         def is_special_service?
           %w{ipsec pf bt}.any? { |s| @new_resource.service_name == s }
         end
 
+        def determine_current_enabled_status!
+          read_rc_conf.each do |line|
+            case line
+            when /#{Regexp.escape(service_enable_variable_name)}="(.*)"/
+              @enabled_state_found = true
+              if $1 =~ /[Nn][Oo][Nn]?[Oo]?[Nn]?[Ee]?/
+                @current_resource.enabled false
+              else
+                @current_resource.enabled true
+              end
+            end
+          end
+          if @new_resource.parameters and @new_resource.parameters.include?(:pkg_script) and !is_special_service?
+            @current_resource.enabled = read_pkg_scripts_conf.any? do |line|
+              line.chomp == @current_resource.service_name
+            end
+          end
+        end
+
+        private
+        def install_pkg_scripts_hook
+          oneliner = "[ -f #{PKG_SCRIPTS_CONF} ] && for _r in `cat #{PKG_SCRIPTS_CONF}`; do pkg_scripts=\"${pkg_scripts} ${_r}\"; done"
+          lines = begin
+                    read_rc_conf
+                  rescue
+                    []
+                  end
+          unless lines.any? { |l| l.start_with?(oneliner) }
+            lines << oneliner
+            Chef::Log.info("Install #{PKG_SCRIPTS_CONF} hook in #{RC_CONF_LOCAL}")
+            write_rc_conf(lines)
+          end
+        end
       end
     end
   end

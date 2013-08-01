@@ -50,4 +50,21 @@ describe_recipe 'chef-openbsd::minitest' do
   it "enables ipsec special service" do
     service("ipsec").must_be_enabled
   end
+
+  it "installs bird via packages" do
+    package("bird").must_be_installed
+  end
+
+  it "adds bird in /etc/pkg_scripts" do
+    pkg_scripts = file("/etc/pkg_scripts.conf")
+    pkg_scripts.must_exist.with(:mode, "0644").with(:owner, "root").with(:group, "wheel")
+    pkg_scripts.must_include "bird"
+  end
+
+  it "disables bird-v6" do
+    pkg_scripts = file("/etc/pkg_scripts.conf")
+    pkg_scripts.must_exist.with(:mode, "0644").with(:owner, "root").with(:group, "wheel")
+    pkg_scripts.wont_include "bird-v6"
+    service("bird-v6").wont_be_enabled
+  end
 end
